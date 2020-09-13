@@ -14,7 +14,7 @@
 #include "common.h"
 
 char ip[INET_ADDRSTRLEN];
-char read_buf[1024];
+char read_buf[MAX_LINE];
 
 int main() {
     int listen_fd;
