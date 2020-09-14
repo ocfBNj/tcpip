@@ -1,4 +1,4 @@
-include_directories(${PROJECT_SOURCE_DIR}/include/)
+include_directories(${PROJECT_SOURCE_DIR}/lib/)
 
-add_executable(client_select client_select.c)
-add_executable(server_select server_select.c)
+add_executable(echoclient_select echoclient_select.c)
+add_executable(echoserver_select echoserver_select.c)

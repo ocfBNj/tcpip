@@ -34,7 +34,7 @@ void echo_cli(FILE* fp, int sock_fd) {
 
 		// input is readable
 		if (FD_ISSET(fileno(fp), &set)) {
-			if (Read(fp, input_buf, sizeof input_buf) == 0) {
+			if (Read(fileno(fp), input_buf, sizeof input_buf) == 0) {
 				shutdown(sock_fd, SHUT_WR);
 				FD_CLR(fileno(fp), &set);
 				stdin_eof = 1;
