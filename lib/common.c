@@ -4,6 +4,7 @@
 #include <errno.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <arpa/inet.h>
 
 #include "common.h"
 
@@ -131,6 +132,80 @@ int Sendto(int fd, const void *buf, size_t nbytes, int flags,
 	return n;
 }
 
+int Getsockopt(int fd, int level, int optname, void* optval, socklen_t* optlen) {
+	int n;
+
+	if ((n = getsockopt(fd, level, optname, optval, optlen)) == -1) {
+		err_sys("getsockopt error");
+	}
+
+	return n;
+}
+
+int Setsockopt(int fd, int level, int optname, const void* optval, socklen_t optlen) {
+	int n;
+
+	if ((n = setsockopt(fd, level, optname, optval, optlen)) == -1) {
+		err_sys("setsockopt error");
+	}
+
+	return n;
+}
+
+static ssize_t	read_cnt;
+static char	*read_ptr;
+static char	read_buf[MAX_LINE];
+
+static ssize_t my_read(int fd, char* ptr) {
+	if (read_cnt <= 0) {
+		// read data to the read_buf
+		for (;;) {
+			if ((read_cnt = read(fd, read_buf, sizeof read_buf)) < 0) {
+				if (errno == EINTR) {
+					continue;
+				} else {
+					return -1;
+				}
+			} else if (read_cnt == 0) {
+				return 0;
+			}
+
+			read_ptr = read_buf;
+			break;
+		}
+	}
+
+	read_cnt--;
+	*ptr = *read_ptr++;
+
+	return 1;
+}
+
+ssize_t Readline(int fd, void* buf, size_t nbytes) {
+	ssize_t n, rcnt;
+	char c;
+	char* ptr = (char*)buf;
+
+	// n = 1 because we will add a '\0' where the buf end
+	for (n = 1; n < nbytes; n++) {
+		if ((rcnt = my_read(fd, &c)) == 1) {
+			*ptr++ = c;
+			if (c == '\n') {
+				break;
+			}
+		} else if (rcnt == 0) {
+			*ptr = 0;
+			return n - 1;
+		} else {
+			return -1;
+		}
+	}
+
+	*ptr = 0;
+
+	return n;
+}
+
 void err_sys(const char* str) {
 	fprintf(stderr, "%s: %s\n", str, strerror(errno));
 	exit(1);
@@ -172,7 +247,7 @@ int tcp_connect(const char* hostname, const char* service) {
 	hints.ai_socktype = SOCK_STREAM;
 
 	if ((n = getaddrinfo(hostname, service, &hints, &res)) != 0) {
-		fprintf(stderr, "tcp_connect error for %s, %s: %s",
+		fprintf(stderr, "tcp_connect error for %s, %s: %s\n",
 			hostname, service, gai_strerror(n));
 		exit(1);
 	}
@@ -195,7 +270,7 @@ int tcp_connect(const char* hostname, const char* service) {
 	}
 
 	if (p == NULL) {
-		fprintf(stderr, "tcp_connect error for %s, %s",
+		fprintf(stderr, "tcp_connect error for %s, %s\n",
 			hostname, service);
 		exit(1);
 	}
@@ -219,10 +294,12 @@ int tcp_listen(const char* hostname, const char* service, socklen_t* addrlenp) {
 	hints.ai_socktype = SOCK_STREAM;
 
 	if ((n = getaddrinfo(hostname, service, &hints, &res)) != 0) {
-		fprintf(stderr, "tcp_listen error for %s, %s: %s",
+		fprintf(stderr, "tcp_listen error for %s, %s: %s\n",
 			hostname, service, gai_strerror(n));
 		exit(1);
 	}
+
+	const int value = 1;
 	
 	for (p = res; p != NULL; p = p->ai_next) {
 		if ((fd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1) {
@@ -230,6 +307,8 @@ int tcp_listen(const char* hostname, const char* service, socklen_t* addrlenp) {
 			close(fd);
 			continue;
 		}
+
+		Setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &value, sizeof value);
 
 		// try to bind
 		if ((n = bind(fd, p->ai_addr, p->ai_addrlen)) == -1) {
@@ -242,7 +321,7 @@ int tcp_listen(const char* hostname, const char* service, socklen_t* addrlenp) {
 	}
 
 	if (p == NULL) {
-		fprintf(stderr, "tcp_listen error for %s, %s",
+		fprintf(stderr, "tcp_listen error for %s, %s\n",
 			hostname, service);
 		exit(1);
 	}
@@ -272,7 +351,7 @@ int udp_client(const char* hostname, const char* service,
 	hints.ai_socktype = SOCK_DGRAM;
 
 	if ((n = getaddrinfo(hostname, service, &hints, &res)) != 0) {
-		fprintf(stderr, "udp_client error for %s, %s: %s",
+		fprintf(stderr, "udp_client error for %s, %s: %s\n",
 			hostname, service, gai_strerror(n));
 		exit(1);
 	}
@@ -288,7 +367,7 @@ int udp_client(const char* hostname, const char* service,
 	}
 
 	if (p == NULL) {
-		fprintf(stderr, "udp_client error for %s, %s",
+		fprintf(stderr, "udp_client error for %s, %s\n",
 			hostname, service);
 		exit(1);
 	}
@@ -315,7 +394,7 @@ int udp_connect(const char* hostname, const char* service) {
 	hints.ai_socktype = SOCK_DGRAM;
 
 	if ((n = getaddrinfo(hostname, service, &hints, &res)) != 0) {
-		fprintf(stderr, "udp_connect error for %s, %s: %s",
+		fprintf(stderr, "udp_connect error for %s, %s: %s\n",
 			hostname, service, gai_strerror(n));
 		exit(1);
 	}
@@ -338,7 +417,7 @@ int udp_connect(const char* hostname, const char* service) {
 	}
 
 	if (p == NULL) {
-		fprintf(stderr, "udp_connect error for %s, %s",
+		fprintf(stderr, "udp_connect error for %s, %s\n",
 			hostname, service);
 		exit(1);
 	}
@@ -362,7 +441,7 @@ int udp_server(const char* hostname, const char* service, socklen_t* lenptr) {
 	hints.ai_socktype = SOCK_DGRAM;
 
 	if ((n = getaddrinfo(hostname, service, &hints, &res)) != 0) {
-		fprintf(stderr, "udp_server error for %s, %s: %s",
+		fprintf(stderr, "udp_server error for %s, %s: %s\n",
 			hostname, service, gai_strerror(n));
 		exit(1);
 	}
@@ -385,7 +464,7 @@ int udp_server(const char* hostname, const char* service, socklen_t* lenptr) {
 	}
 
 	if (p == NULL) {
-		fprintf(stderr, "udp_server error for %s, %s",
+		fprintf(stderr, "udp_server error for %s, %s\n",
 			hostname, service);
 		exit(1);
 	}
@@ -397,4 +476,22 @@ int udp_server(const char* hostname, const char* service, socklen_t* lenptr) {
 	freeaddrinfo(res);
 
 	return fd;
+}
+
+void connect_information(const struct sockaddr* addr) {
+	static char ip[INET6_ADDRSTRLEN];
+
+	if (addr->sa_family == AF_INET) {
+		struct sockaddr_in* ipv4 = (struct sockaddr_in*)addr;
+		fprintf(stdout, "connected by %s, port %d\n",
+				inet_ntop(AF_INET, &ipv4->sin_addr, ip, sizeof ip),
+				ntohs(ipv4->sin_port));
+	} else if (addr->sa_family == AF_INET6) {
+		struct sockaddr_in6* ipv6 = (struct sockaddr_in6*)addr;
+		fprintf(stdout, "connected by %s, port %d\n",
+				inet_ntop(AF_INET6, &ipv6->sin6_addr, ip, sizeof ip),
+				ntohs(ipv6->sin6_port));
+	} else {
+		fprintf(stderr, "connected by unknown family\n");
+	}
 }

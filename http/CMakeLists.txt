@@ -1,0 +1,2 @@
+add_executable(httpserver httpserver.c)
+add_executable(minihttpserver minihttpserver.cpp)

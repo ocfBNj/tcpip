@@ -8,6 +8,9 @@
 #define MAX_LINE 4096
 #define max(a, b) ((a) > (b) ? (a) : (b))
 
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 // wrapper functions
 int Accept(int fd, struct sockaddr* addr, socklen_t* len);
@@ -24,6 +27,9 @@ int Recvfrom(int fd, void* buf, size_t nbytes, int flags, struct sockaddr* addr,
 		socklen_t* addr_len);
 int Sendto(int fd, const void* buf, size_t nbytes, int flags,
 		const struct sockaddr* addr, socklen_t addr_len);
+int Getsockopt(int fd, int level, int optname, void* optval, socklen_t* optlen);
+int Setsockopt(int fd, int level, int optname, const void* optval, socklen_t optlen);
+ssize_t Readline(int fd, void* buf, size_t nbytes);
 
 
 // error handling functions
@@ -39,3 +45,9 @@ int udp_client(const char* hostname, const char* service,
 	struct sockaddr** saptr, socklen_t* lenp);
 int udp_connect(const char* hostname, const char* service);
 int udp_server(const char* hostname, const char* service, socklen_t* lenptr);
+
+void connect_information(const struct sockaddr* addr);
+
+#ifdef __cplusplus
+}
+#endif
