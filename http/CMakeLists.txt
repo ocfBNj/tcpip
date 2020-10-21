@@ -1,2 +1,4 @@
 add_executable(httpserver httpserver.c)
 add_executable(minihttpserver minihttpserver.cpp)
+
+target_link_libraries(minihttpserver ThreadPool)

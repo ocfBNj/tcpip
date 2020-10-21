@@ -6,7 +6,10 @@
 #define LISTENQ 512
 #define SERV_PORT 9092
 #define MAX_LINE 4096
+
+#ifndef __cplusplus
 #define max(a, b) ((a) > (b) ? (a) : (b))
+#endif
 
 #ifdef __cplusplus
 extern "C" {

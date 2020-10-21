@@ -7,13 +7,15 @@
 #include <filesystem>
 #include <fstream>
 
+#include "common.h"
+#include "ThreadPool.h"
+
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
-#include "common.h"
 
-constexpr bool debug = true;
+constexpr bool debug = false;
 constexpr std::string_view root = "/root";
 
 // thread_local Because for each thread, there is a buffer
@@ -85,12 +87,23 @@ request parsing_http_request_line(std::string_view line) {
     req_method method = req_method::UNKNOWN;
 
     std::size_t n = line.find(' ', 0);
+    if (n == std::string_view::npos) {
+        return {method, std::string{}};
+    }
 
+    // get request method
     std::string_view m = line.substr(0, n);
     if (m == "GET") {
         method = req_method::GET;
     }
-    std::string_view url = line.substr(n + 1, line.find(' ', n + 1) - (n + 1));
+
+    std::size_t pos = line.find(' ', n + 1);
+    if (pos == std::string_view::npos) {
+        return {method, std::string{}};
+    }
+
+    // get request url
+    std::string_view url = line.substr(n + 1, pos - (n + 1));
 
     if constexpr (debug) {
         std::cout << "request method: " 
@@ -98,7 +111,7 @@ request parsing_http_request_line(std::string_view line) {
                 << ", request url: " << url << "\n";
     }
 
-    return request{method, std::string(url)};
+    return {method, std::string{url}};
 }
 
 std::string service_http_response_line(std::string_view code) {
@@ -110,6 +123,10 @@ std::string service_http_response_line(std::string_view code) {
         parase = "Moved Permanently";
     } else if (code == "404") {
         parase = "Not Found";
+    } else if (code == "501") {
+        parase = "Method Not Implemented";
+    } else if (code == "400") {
+        parase = "Bad Request";
     }
 
     return std::string("HTTP/1.0 ").append(code).append(" ").append(parase).append("\r\n");
@@ -149,8 +166,22 @@ void service_http_redirect(int fd, std::string_view path) {
     Writen(fd, response.data(), response.size());
 }
 
-void service_http_response_404(int fd, std::string_view path) {
+void service_http_response_400(int fd) {
+    std::string response = service_http_response_line("400") + service_http_response_header();
+    response.append("\r\n");
+
+    Writen(fd, response.data(), response.size());
+}
+
+void service_http_response_404(int fd) {
     std::string response = service_http_response_line("404") + service_http_response_header();
+    response.append("\r\n");
+
+    Writen(fd, response.data(), response.size());
+}
+
+void service_http_response_501(int fd) {
+    std::string response = service_http_response_line("501") + service_http_response_header();
     response.append("\r\n");
 
     Writen(fd, response.data(), response.size());
@@ -218,6 +249,18 @@ void service_http(int fd) {
         }
     }
 
+    if (req.method == req_method::UNKNOWN) {
+        service_http_response_501(fd);
+        close(fd);
+        return;
+    }
+
+    if (req.url.length() == 0) {
+        service_http_response_400(fd);
+        close(fd);
+        return;
+    }
+
     if (req.url.front() != '/') {
         req.url = "/" + req.url;
     }
@@ -241,7 +284,7 @@ void service_http(int fd) {
         service_http_redirect(fd, p.string() + "/");
     } else {
         // Response 404
-        service_http_response_404(fd, path.c_str());
+        service_http_response_404(fd);
     }
 
     close(fd);
@@ -254,6 +297,7 @@ int main(int argc, char* argv[]) {
     }
 
     int listen_fd = tcp_listen(nullptr, argv[1], nullptr);
+    ThreadPool pool;
 
     for (;;) {
         struct sockaddr_storage addr;
