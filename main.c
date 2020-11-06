@@ -26,7 +26,7 @@ int main(void) {
 	}
 
 	for (struct addrinfo* p = res; p != NULL; p = p->ai_next) {
-		struct sockaddr_in* addr = (struct sockaddr_in*)&p->ai_addr;
+		struct sockaddr_in* addr = (struct sockaddr_in*)p->ai_addr;
 		printf("%s:%d\n",
 			inet_ntop(p->ai_family, &addr->sin_addr, ip, sizeof ip),
 			ntohs(addr->sin_port));
